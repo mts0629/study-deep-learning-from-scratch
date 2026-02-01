@@ -10,6 +10,8 @@
 （[サポートサイト（GitHub）](https://github.com/oreilly-japan/deep-learning-from-scratch-3)）
 - `book_4`: 『ゼロから作るDeep Learning ❹ 強化学習編』
 （[サポートサイト（GitHub）](https://github.com/oreilly-japan/deep-learning-from-scratch-4)）
+- `book_5`: 『ゼロから作るDeep Learning ❺ 生成モデル編』
+（[サポートサイト（GitHub）](https://github.com/oreilly-japan/deep-learning-from-scratch-5)）
 
 ## メモ
 
