@@ -9,3 +9,4 @@ book_1/dataset/
 book_2/dataset/ptb.*.npy
 book_3/*.npz
 book_4/**/*.npz
+book_5/step02/*.txt
