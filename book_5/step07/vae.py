@@ -7,15 +7,6 @@ import torchvision
 from torchvision import datasets, transforms
 
 
-# Hyperparameters
-input_dim = 784  # Input size (28x28)
-hidden_dim = 200  # Dimension of hidden layer
-latent_dim = 20  # Dimension of latent vector
-epochs = 30
-learning_rate = 3e-4
-batch_size = 32
-
-
 # Encoder: convert input to latent space
 class Encoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dim):
@@ -72,3 +63,84 @@ class VAE(nn.Module):
         L1 = F.mse_loss(x_hat, x, reduction="sum")
         L2 = - torch.sum(1 + torch.log(sigma ** 2) - mu ** 2 - sigma ** 2)
         return (L1 + L2) / batch_size
+
+
+# Hyperparameters
+input_dim = 784  # Input size (28x28)
+hidden_dim = 200  # Dimension of hidden layer
+latent_dim = 20  # Dimension of latent vector
+epochs = 30
+learning_rate = 3e-4
+batch_size = 32
+
+
+# MNIST dataset and dataloader
+transform = transforms.Compose([
+    transforms.ToTensor(),  # Normalize
+    transforms.Lambda(torch.flatten)  # (28,28) -> (784)
+])
+dataset = datasets.MNIST(
+    root="./data",
+    train=True,
+    download=True,
+    transform=transform
+)
+dataloader = torch.utils.data.DataLoader(
+    dataset,
+    batch_size=batch_size,
+    shuffle=True
+)
+
+# VAE model
+model = VAE(input_dim, hidden_dim, latent_dim)
+# Optimizer: Adam
+optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+# Learning
+losses = []
+for epoch in range(epochs):
+    loss_sum = 0.0
+    cnt = 0
+
+    for x, label in dataloader:
+        optimizer.zero_grad()
+        loss = model.get_loss(x)
+        loss.backward()
+        optimizer.step()
+
+        loss_sum += loss.item()
+        cnt += 1
+
+    loss_avg = loss_sum / cnt
+    losses.append(loss_avg)
+    print(loss_avg)
+
+
+# Plot loss
+plt.plot([i for i in range(epochs)], losses)
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.savefig("./loss.png")
+
+
+# Generate new images
+with torch.no_grad():
+    # Generate 64 latent variables
+    sample_size = 64
+    z = torch.randn(sample_size, latent_dim)
+    # Generate images from the latent variables
+    x = model.decoder(z)
+    generated_images = x.view(sample_size, 1, 28, 28)  # Reshape to (28,28)
+
+# Sort images to 8x8 grid
+grid_img = torchvision.utils.make_grid(
+    generated_images,
+    nrow=8,
+    padding=2,
+    normalize=True
+)
+# Draw generated images
+plt.cla()
+plt.imshow(grid_img.permute(1, 2, 0))
+plt.axis("off")
+plt.savefig("./generated_images.png")
