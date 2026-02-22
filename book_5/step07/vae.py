@@ -69,59 +69,72 @@ class VAE(nn.Module):
 input_dim = 784  # Input size (28x28)
 hidden_dim = 200  # Dimension of hidden layer
 latent_dim = 20  # Dimension of latent vector
-epochs = 30
-learning_rate = 3e-4
-batch_size = 32
-
-
-# MNIST dataset and dataloader
-transform = transforms.Compose([
-    transforms.ToTensor(),  # Normalize
-    transforms.Lambda(torch.flatten)  # (28,28) -> (784)
-])
-dataset = datasets.MNIST(
-    root="./data",
-    train=True,
-    download=True,
-    transform=transform
-)
-dataloader = torch.utils.data.DataLoader(
-    dataset,
-    batch_size=batch_size,
-    shuffle=True
-)
 
 # VAE model
 model = VAE(input_dim, hidden_dim, latent_dim)
-# Optimizer: Adam
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-# Learning
-losses = []
-for epoch in range(epochs):
-    loss_sum = 0.0
-    cnt = 0
+# Path to save the model
+model_path = "./vae.pth"
 
-    for x, label in dataloader:
-        optimizer.zero_grad()
-        loss = model.get_loss(x)
-        loss.backward()
-        optimizer.step()
+do_training = True
+if do_training:
+    # Hyperparameters
+    epochs = 30
+    learning_rate = 3e-4
+    batch_size = 32
 
-        loss_sum += loss.item()
-        cnt += 1
+    # MNIST dataset and dataloader
+    transform = transforms.Compose([
+        transforms.ToTensor(),  # Normalize
+        transforms.Lambda(torch.flatten)  # (28,28) -> (784)
+    ])
+    dataset = datasets.MNIST(
+        root="./data",
+        train=True,
+        download=True,
+        transform=transform
+    )
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True
+    )
 
-    loss_avg = loss_sum / cnt
-    losses.append(loss_avg)
-    print(loss_avg)
+    # Optimizer: Adam
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+    # Learning
+    losses = []
+    for epoch in range(epochs):
+        loss_sum = 0.0
+        cnt = 0
+
+        for x, label in dataloader:
+            optimizer.zero_grad()
+            loss = model.get_loss(x)
+            loss.backward()
+            optimizer.step()
+
+            loss_sum += loss.item()
+            cnt += 1
+
+        loss_avg = loss_sum / cnt
+        losses.append(loss_avg)
+        print(loss_avg)
+
+    # Plot loss
+    plt.plot([i for i in range(epochs)], losses)
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.savefig("./loss.png")
+
+    # Save a state_dict
+    torch.save(model.state_dict(), model_path)
 
 
-# Plot loss
-plt.plot([i for i in range(epochs)], losses)
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.savefig("./loss.png")
-
+# Load the trained model
+model.load_state_dict(torch.load(model_path))
+model.eval()
 
 # Generate new images
 with torch.no_grad():
