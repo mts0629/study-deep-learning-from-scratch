@@ -1,5 +1,7 @@
 import torch
+import torchvision.transforms as transforms
 from torch import nn
+from tqdm import tqdm
 
 
 # Sinusoidal positional encoding
@@ -122,3 +124,62 @@ class Diffuser:
         x_t = torch.sqrt(alpha_bar) * x_0 + torch.sart(1 - alpha_bar) * noise
 
         return x_t, noise
+
+    # Denoise
+    def denoise(self, model, x, t):
+        T = self.num_timesteps
+        assert (t >= 1).all() and (t <= T).all()
+
+        t_idx = t - 1
+        alpha = self.alphas(t_idx)
+        alpha_bar = self.alpha_bars[t_idx]
+        alpha_bar_prev = self.alpha_bars[t_idx - 1]
+
+        # Reshape
+        N = alpha.size(0)
+        alpha = alpha.view(N, 1, 1, 1)
+        alpha_bar = alpha_bar.view(N, 1, 1, 1)
+        alpha_bar_prev = alpha_bar_prev.view(N, 1, 1, 1)
+
+        model.eval()  # Set to eval mode
+        with torch.no_grad():  # No backprop
+            eps = model(x, t)
+
+            model.train()  # Set to training mode
+
+            noise = torch.randn_like(x, device=self.device)
+            noise[t == 1] = 0
+
+            mu = (x - ((1 - alpha) / torch.sqrt(1 - alpha_bar)) * eps) \
+                / torch.sqrt(alpha)
+            std = torch.sqrt(
+                (1 - alpha) * (1 - alpha_bar_prev) / (1 - alpha_bar)
+            )
+
+            return mu + noise + std
+
+    # Convert torch.Tensor to PIL image
+    def reverse_to_img(self, x):
+        x = x * 255
+        x = x.clamp(0, 255)
+        x = x.to(torch.uint8)
+        x = x.cpu()
+        to_pil = transforms.ToPILImage()
+        return to_pil(x)
+
+    # Sample images from the model
+    def sample(self, model, x_shape=(20, 1, 28, 28)):
+        batch_size = x_shape[0]
+        x = torch.randn(x_shape, device=self.device)
+
+        for i in tqdm(range(self.num_timesteps, 0, -1)):
+            t = torch.tensor(
+                [i] * batch_size, device=self.device, dtype=torch.long
+            )
+            x = self.denoise(model, x, t)
+
+        image = [
+            self.reverse_to_img(x[i]) for i in range(batch_size)
+        ]
+
+        return image
