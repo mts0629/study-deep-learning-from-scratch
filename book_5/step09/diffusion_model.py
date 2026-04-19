@@ -1,6 +1,13 @@
+import math
+import matplotlib.pyplot as plt
+
 import torch
-import torchvision.transforms as transforms
+import torch.nn.functional as F
 from torch import nn
+from torch.optim import Adam
+from torch.utils.data import DataLoader
+import torchvision
+from torchvision import transforms
 from tqdm import tqdm
 
 
@@ -109,11 +116,12 @@ class Diffuser:
         )
         self.alphas = 1 - self.betas
         self.alpha_bars = torch.cumprod(self.alphas, dim=0)
+        self.device = device
 
     # Add gaussian noise at time t to input
     def add_noise(self, x_0, t):
         T = len(self.betas)
-        assert (t >= 1).all() and (t <= self.num_timesteps).all()
+        assert (t >= 1).all() and (t <= T).all()
 
         t_idx = t - 1
         alpha_bar = self.alpha_bars[t_idx]
@@ -121,7 +129,7 @@ class Diffuser:
         alpha_bar = alpha_bar.view(N, 1, 1, 1)  # Reshape
 
         noise = torch.randn_like(x_0, device=self.device)
-        x_t = torch.sqrt(alpha_bar) * x_0 + torch.sart(1 - alpha_bar) * noise
+        x_t = torch.sqrt(alpha_bar) * x_0 + torch.sqrt(1 - alpha_bar) * noise
 
         return x_t, noise
 
@@ -131,7 +139,7 @@ class Diffuser:
         assert (t >= 1).all() and (t <= T).all()
 
         t_idx = t - 1
-        alpha = self.alphas(t_idx)
+        alpha = self.alphas[t_idx]
         alpha_bar = self.alpha_bars[t_idx]
         alpha_bar_prev = self.alpha_bars[t_idx - 1]
 
@@ -156,7 +164,7 @@ class Diffuser:
                 (1 - alpha) * (1 - alpha_bar_prev) / (1 - alpha_bar)
             )
 
-            return mu + noise + std
+            return mu + noise * std
 
     # Convert torch.Tensor to PIL image
     def reverse_to_img(self, x):
@@ -183,3 +191,74 @@ class Diffuser:
         ]
 
         return image
+
+
+if __name__ == "__main__":
+    # Hyperparameters
+    img_size = 28
+    batch_size = 128
+    num_timesteps = 1000
+    epochs = 10
+    lr = 1e-3
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    def show_images(images, rows=2, cols=10):
+        fig = plt.figure(figsize=(cols, rows))
+        i = 0
+        for _ in range(rows):
+            for _ in range(cols):
+                fig.add_subplot(rows, cols, i + 1)
+                plt.imshow(images[i], cmap="gray")
+                plt.axis("off")
+                i += 1
+        plt.savefig("generated_images.png")
+
+    preprocess = transforms.ToTensor()
+    dataset = torchvision.datasets.MNIST(
+        root="./data", download=True, transform=preprocess
+    )
+    dataloader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=True
+    )
+
+    diffuser = Diffuser(num_timesteps, device=device)
+    model = UNet()
+    model.to(device)
+
+    # Train
+    optimizer = Adam(model.parameters(), lr=lr)
+    losses = []
+    for epoch in range(epochs):
+        loss_sum = 0.0
+        cnt = 0
+
+        for images, labels in tqdm(dataloader):
+            optimizer.zero_grad()
+            x = images.to(device)
+            t = torch.randint(1, num_timesteps+1, (len(x),), device=device)
+
+            # Calculate loss between noise from the diffuser and predicted noise
+            x_noisy, noise = diffuser.add_noise(x, t)
+            noise_pred = model(x_noisy, t)
+            loss = F.mse_loss(noise, noise_pred)
+
+            loss.backward()
+            optimizer.step()
+
+            loss_sum += loss.item()
+            cnt += 1
+
+        loss_avg = loss_sum / cnt
+        losses.append(loss_avg)
+        print(f"Epoch {epoch} | Loss: {loss_avg}")
+
+    # Plot loss
+    plt.plot(losses)
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.savefig("loss.png")
+    plt.cla()
+
+    # Generate images
+    images = diffuser.sample(model)
+    show_images(images)
