@@ -17,7 +17,7 @@ def _pos_encoding(t, output_dim, device="cpu"):
     v = torch.zeros(D, device=device)
 
     i = torch.arange(0, D, device=device)  # Indices: [0, D-1]
-    div_term = 10000 ** (i / D)
+    div_term = torch.exp(i / D * math.log(10000))
 
     v[0::2] = torch.sin(t / div_term[0::2])  # sine for even indices
     v[1::2] = torch.cos(t / div_term[1::2])  # cosine for odd indices
@@ -28,6 +28,7 @@ def _pos_encoding(t, output_dim, device="cpu"):
 # Sinusoidal positional encoding (for batched data)
 def pos_encoding(ts, output_dim, device="cpu"):
     batch_size = len(ts)
+    device = ts.device
     v = torch.zeros(batch_size, output_dim, device=device)
 
     for i in range(batch_size):
@@ -127,7 +128,7 @@ class Diffuser:
 
     # Add gaussian noise at time t to input
     def add_noise(self, x_0, t):
-        T = len(self.betas)
+        T = self.num_timesteps
         assert (t >= 1).all() and (t <= T).all()
 
         t_idx = t - 1
@@ -160,18 +161,18 @@ class Diffuser:
         with torch.no_grad():  # No backprop
             eps = model(x, t, labels)
 
-            model.train()  # Set to training mode
+        model.train()  # Set to training mode
 
-            noise = torch.randn_like(x, device=self.device)
-            noise[t == 1] = 0
+        noise = torch.randn_like(x, device=self.device)
+        noise[t == 1] = 0
 
-            mu = (x - ((1 - alpha) / torch.sqrt(1 - alpha_bar)) * eps) \
-                / torch.sqrt(alpha)
-            std = torch.sqrt(
-                (1 - alpha) * (1 - alpha_bar_prev) / (1 - alpha_bar)
-            )
+        mu = (x - ((1 - alpha) / torch.sqrt(1 - alpha_bar)) * eps) \
+            / torch.sqrt(alpha)
+        std = torch.sqrt(
+            (1 - alpha) * (1 - alpha_bar_prev) / (1 - alpha_bar)
+        )
 
-            return mu + noise * std
+        return mu + noise * std
 
     # Convert torch.Tensor to PIL image
     def reverse_to_img(self, x):
@@ -203,6 +204,21 @@ class Diffuser:
         return image, labels
 
 
+def show_images(images, rows=2, cols=10):
+    fig = plt.figure(figsize=(cols, rows))
+    i = 0
+    for _ in range(rows):
+        for _ in range(cols):
+            ax = fig.add_subplot(rows, cols, i + 1)
+            plt.imshow(images[i], cmap="gray")
+            if labels is not None:
+                ax.set_xlabel(labels[i].item())
+            ax.get_xaxis().set_ticks([])
+            ax.get_yaxis().set_ticks([])
+            i += 1
+    plt.savefig("generated_images.png")
+
+
 if __name__ == "__main__":
     # Hyperparameters
     img_size = 28
@@ -212,24 +228,9 @@ if __name__ == "__main__":
     lr = 1e-3
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    def show_images(images, rows=2, cols=10):
-        fig = plt.figure(figsize=(cols, rows))
-        i = 0
-        for _ in range(rows):
-            for _ in range(cols):
-                ax = fig.add_subplot(rows, cols, i + 1)
-                plt.imshow(images[i], cmap="gray")
-                if labels is not None:
-                    ax.set_xlabel(labels[i].item())
-                ax.set_xaxis().set_ticks([])
-                ax.set_yaxis().set_ticks([])
-                i += 1
-        plt.savefig("generated_images.png")
-
     preprocess = transforms.ToTensor()
     dataset = torchvision.datasets.MNIST(
-        # root="./data", download=True, transform=preprocess
-        root="../step09/data", download=False, transform=preprocess
+        root="./data", download=True, transform=preprocess
     )
     dataloader = DataLoader(
         dataset, batch_size=batch_size, shuffle=True
@@ -275,5 +276,5 @@ if __name__ == "__main__":
     plt.cla()
 
     # Generate images
-    images = diffuser.sample(model)
+    images, _ = diffuser.sample(model)
     show_images(images)
