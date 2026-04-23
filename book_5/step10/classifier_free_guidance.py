@@ -207,7 +207,7 @@ class Diffuser:
         return image, labels
 
 
-def show_images(images, rows=2, cols=10):
+def show_images(images, labels=None, rows=2, cols=10):
     fig = plt.figure(figsize=(cols, rows))
     i = 0
     for _ in range(rows):
@@ -283,5 +283,5 @@ if __name__ == "__main__":
     plt.cla()
 
     # Generate images
-    images, _ = diffuser.sample(model)
-    show_images(images)
+    images, labels = diffuser.sample(model)
+    show_images(images, labels)
